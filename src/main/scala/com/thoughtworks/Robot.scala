@@ -103,24 +103,6 @@ object Robot {
 
     final def currentSource(c: Context): c.Tree = {
       import c.universe._
-//
-//      c.info(c.enclosingPosition, show(c.reifyEnclosingRuntimeClass), true)
-//      c.info(c.enclosingPosition, show(c.reifyEnclosingRuntimeClass.pos), true)
-
-      val source = c.enclosingPosition.source
-      c.enclosingPosition.start
-      c.enclosingPosition.end
-      val et = c.macroApplication
-      
-      c.info(c.enclosingPosition, show(et), true)
-
-
-
-      val p = c.internal.enclosingOwner.pos
-
-//      c.info(p, "c.i.e.i", true)
-//      c.info(c.macroApplication.asInstanceOf[scala.reflect.internal.Trees#Tree], "ma.p", true)
-
       q"""new _root_.com.thoughtworks.Robot.PersistencyPosition(new _root_.java.io.File(${c.enclosingPosition.source.path}))"""
 
       // TODO: other information
