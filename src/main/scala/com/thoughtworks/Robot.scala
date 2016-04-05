@@ -23,10 +23,10 @@ import scala.util.{Failure, Success}
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-abstract class Robot[AutoImports] private[Robot](initialState: Any, persistencyPosition: Robot.PersistencyPosition, autoImportsType: Type)
+abstract class Robot[AutoImports] private[Robot](initialState: Any, persistencyPosition: Robot.PersistencyPosition, private var autoImportsType: Type)
   extends Robot.StateMachine(initialState) {
 
-    def this(currentState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition, tag: WeakTypeTag[AutoImports]) = {
+  def this(currentState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition, tag: WeakTypeTag[AutoImports]) = {
     this(currentState, persistencyPosition, tag.tpe)
   }
 
@@ -36,23 +36,28 @@ abstract class Robot[AutoImports] private[Robot](initialState: Any, persistencyP
       val robotDef = q"object ${currentMirror.moduleSymbol(Robot.this.getClass).name} extends _root_.com.thoughtworks.Robot($newState)"
       Robot.SourceFilePatcher.edit(persistencyPosition, showCode(robotDef))
       currentState = newState
+      autoImportsType = currentMirror.classSymbol(newState.getClass).toType
     }
+  }
+
+  final def eval(code: String): Unit = {
+    import scala.tools.reflect.ToolBox
+    val toolBox = currentMirror.mkToolBox()
+
+    val autoImports = state
+    val tree =
+      q"""
+        val $$robotAutoImports = ${reify(autoImports).tree}.asInstanceOf[$autoImportsType]
+        import $$robotAutoImports._
+        ${toolBox.parse(code)}
+      """
+    state = toolBox.eval(tree)
   }
 
   final def main(arguments: Array[String]): Unit = {
     arguments match {
       case Array(code) =>
-        import scala.tools.reflect.ToolBox
-        val toolBox = currentMirror.mkToolBox()
-
-        val autoImports = state
-        val tree =
-          q"""
-          val $$robotAutoImports = ${reify(autoImports).tree}.asInstanceOf[$autoImportsType]
-          import $$robotAutoImports._
-          ${toolBox.parse(code)}
-        """
-        state = toolBox.eval(tree)
+        eval(code)
       case _ =>
         sys.error("Expect one argument.")
     }
@@ -180,7 +185,7 @@ object Robot {
             val traverser = new Traverser {
               override def traverse(tree: Tree): Unit = {
                 tree match {
-                  case md@ModuleDef(_, _, Template(List(p@q"$_(..$_)"), _, List(constructor))) =>
+                  case md@ModuleDef(_, _, Template(List(q"$_(..$_)"), _, List(constructor))) =>
                     arrayBuilder += PatchPoint(constructor, md.pos)
                   case _ =>
                     super.traverse(tree)
@@ -200,7 +205,6 @@ object Robot {
         case EmptyTree =>
           val index = positionMap.indexWhere(_.constructor.symbol == c.internal.enclosingOwner)
           index -> positionMap(index).position
-
         case currentRobotConstructor =>
           val index = positionMap.indexWhere(_.constructor == currentRobotConstructor)
           index -> positionMap(index).position
