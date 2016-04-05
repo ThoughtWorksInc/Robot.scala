@@ -206,6 +206,10 @@ object Robot {
           index -> positionMap(index).position
       }
 
+      if (objectPosition.start == objectPosition.end) {
+        c.error(c.enclosingPosition, "Robot.scala requires ranged position. Please add setting `scalacOptions += \"-Yrangepos\"` to your build.sbt")
+      }
+
       val md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(objectPosition.source.file.file))
       val pp = PersistencyPosition(
         PersistencyFile(objectPosition.source.path, positionMap.size, md5sum),
