@@ -178,7 +178,7 @@ object Robot {
             val traverser = new Traverser {
               override def traverse(tree: Tree): Unit = {
                 tree match {
-                  case md@ModuleDef(_, _, Template(List(p@q"${tq"_root_.com.thoughtworks.Robot"}(..$_)"), _, List(constructor))) =>
+                  case md@ModuleDef(_, _, Template(List(p@q"$_(..$_)"), _, List(constructor))) =>
                     arrayBuilder += PatchPoint(constructor, md.pos)
                   case _ =>
                     super.traverse(tree)
