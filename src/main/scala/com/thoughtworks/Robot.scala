@@ -23,18 +23,20 @@ import scala.util.{Failure, Success}
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-abstract class Robot[AutoImports] private[Robot](currentState: Any, persistencyPosition: Robot.PersistencyPosition, autoImportsType: Type)
-  extends Robot.StateMachine(currentState) {
+abstract class Robot[AutoImports] private[Robot](initialState: Any, persistencyPosition: Robot.PersistencyPosition, autoImportsType: Type)
+  extends Robot.StateMachine(initialState) {
 
-  def this(currentState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition, tag: WeakTypeTag[AutoImports]) = {
+    def this(currentState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition, tag: WeakTypeTag[AutoImports]) = {
     this(currentState, persistencyPosition, tag.tpe)
   }
 
-  override final def state_=(newState: Any): Unit = {
-    import Q._
-    val robotDef = q"object ${currentMirror.moduleSymbol(Robot.this.getClass).name} extends _root_.com.thoughtworks.Robot($newState)"
-
-    Robot.SourceFilePatcher.edit(persistencyPosition, showCode(robotDef))
+  override final def state_=(newState: Any): Unit = synchronized {
+    if (currentState != newState) {
+      import Q._
+      val robotDef = q"object ${currentMirror.moduleSymbol(Robot.this.getClass).name} extends _root_.com.thoughtworks.Robot($newState)"
+      Robot.SourceFilePatcher.edit(persistencyPosition, showCode(robotDef))
+      currentState = newState
+    }
   }
 
   final def main(arguments: Array[String]): Unit = {
