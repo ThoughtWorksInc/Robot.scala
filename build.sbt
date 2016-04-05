@@ -15,3 +15,5 @@ libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
 libraryDependencies += "com.lihaoyi" %% "utest" % "0.4.3" % Test
 
 testFrameworks += new TestFramework("utest.runner.Framework")
+
+scalacOptions += "-Yrangepos"
