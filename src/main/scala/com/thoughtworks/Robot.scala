@@ -23,11 +23,12 @@ import scala.util.{Failure, Success}
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-abstract class Robot[AutoImports] private[Robot](initialState: Any, persistencyPosition: Robot.PersistencyPosition, private var autoImportsType: Type)
+abstract class Robot[AutoImports] private[Robot](val initialState: AutoImports, persistencyPosition: Robot.PersistencyPosition, private var autoImportsType: Type)
   extends Robot.StateMachine(initialState) {
+  Singleton =>
 
-  def this(currentState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition, tag: WeakTypeTag[AutoImports]) = {
-    this(currentState, persistencyPosition, tag.tpe)
+  def this(initialState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition, tag: WeakTypeTag[AutoImports]) = {
+    this(initialState, persistencyPosition, tag.tpe)
   }
 
   override final def state_=(newState: Any): Unit = synchronized {
@@ -207,6 +208,10 @@ object Robot {
           index -> positionMap(index).position
         case currentRobotConstructor =>
           val index = positionMap.indexWhere(_.constructor == currentRobotConstructor)
+          if (index == -1) {
+            c.error(c.enclosingPosition, "A Robot instance must be an object, not a class.")
+            return q"???"
+          }
           index -> positionMap(index).position
       }
 
