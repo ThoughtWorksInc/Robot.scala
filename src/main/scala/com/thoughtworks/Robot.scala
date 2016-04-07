@@ -34,8 +34,7 @@ abstract class Robot[AutoImports] private[Robot](val initialState: AutoImports, 
   override final def state_=(newState: Any): Unit = synchronized {
     if (currentState != newState) {
       import Q._
-      val robotDef = q"object ${currentMirror.moduleSymbol(Robot.this.getClass).name} extends _root_.com.thoughtworks.Robot($newState)"
-      Robot.SourceFilePatcher.edit(persistencyPosition, showCode(robotDef))
+      Robot.SourceFilePatcher.edit(persistencyPosition, showCode(q"$newState"))
       currentState = newState
       autoImportsType = currentMirror.classSymbol(newState.getClass).toType
     }
@@ -186,8 +185,8 @@ object Robot {
             val traverser = new Traverser {
               override def traverse(tree: Tree): Unit = {
                 tree match {
-                  case md@ModuleDef(_, _, Template(List(q"$_(..$_)"), _, List(constructor))) =>
-                    arrayBuilder += PatchPoint(constructor, md.pos)
+                  case md@ModuleDef(_, _, Template(List(q"$_($stateTree)"), _, List(constructor))) =>
+                    arrayBuilder += PatchPoint(constructor, stateTree.pos)
                   case _ =>
                     super.traverse(tree)
                 }
