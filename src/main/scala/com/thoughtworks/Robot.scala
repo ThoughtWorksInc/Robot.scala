@@ -23,20 +23,14 @@ import scala.util.{Failure, Success}
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-abstract class Robot[AutoImports] private[Robot](val initialState: AutoImports, persistencyPosition: Robot.PersistencyPosition, private var autoImportsType: Type)
-  extends Robot.StateMachine(initialState) {
-  Singleton =>
+abstract class Robot[AutoImports](initialState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition)
+  extends Robot.StateMachine[AutoImports](initialState) {
 
-  def this(initialState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition, tag: WeakTypeTag[AutoImports]) = {
-    this(initialState, persistencyPosition, tag.tpe)
-  }
-
-  override final def state_=(newState: Any): Unit = synchronized {
+  override final def state_=(newState: AutoImports): Unit = synchronized {
     if (currentState != newState) {
       import Q._
       Robot.SourceFilePatcher.edit(persistencyPosition, showCode(q"$newState"))
       currentState = newState
-      autoImportsType = currentMirror.classSymbol(newState.getClass).toType
     }
   }
 
@@ -45,13 +39,14 @@ abstract class Robot[AutoImports] private[Robot](val initialState: AutoImports, 
     val toolBox = currentMirror.mkToolBox()
 
     val autoImports = state
+    val autoImportsType = currentMirror.classSymbol(autoImports.getClass).toType
     val tree =
       q"""
         val $$robotAutoImports = ${reify(autoImports).tree}.asInstanceOf[$autoImportsType]
         import $$robotAutoImports._
         ${toolBox.parse(code)}
       """
-    state = toolBox.eval(tree)
+    state = toolBox.eval(tree).asInstanceOf[AutoImports]
   }
 
   final def main(arguments: Array[String]): Unit = {
@@ -67,11 +62,11 @@ abstract class Robot[AutoImports] private[Robot](val initialState: AutoImports, 
 
 object Robot {
 
-  sealed abstract class StateMachine private[Robot](private[Robot] var currentState: Any) {
+  sealed abstract class StateMachine[AutoImports] private[Robot](private[Robot] var currentState: AutoImports) {
 
-    final def state: Any = currentState
+    final def state: AutoImports = currentState
 
-    def state_=(newState: Any): Unit
+    def state_=(newState: AutoImports): Unit
 
   }
 
