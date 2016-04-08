@@ -137,6 +137,7 @@ object Robot {
           } finally {
             writer.close()
           }
+          editingSourceFile.sizeChanges(position.index) += newContent.length - (currentEnd - currentStart)
           editingSourceFile.md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(new File(position.file.name)))
         } else {
           throw new IllegalStateException(s"Can't patch ${position.file.name} because some other programs changes on file after the robot loaded.")
