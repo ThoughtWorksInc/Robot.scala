@@ -21,22 +21,34 @@ object RobotTests extends TestSuite {
 
   override def tests = this {
 
-    object R extends Robot[Door](_root_.com.thoughtworks.RobotTests.ClosedDoor(5))
+    "object R extends Robot" - {
+      object R extends Robot[Door](_root_.com.thoughtworks.RobotTests.ClosedDoor(5))
 
-    R.eval("open")
-    assert(R.state == OpenDoor(4))
-    R.eval("close")
-    assert(R.state == ClosedDoor(3))
-    R.eval("open")
-    assert(R.state == OpenDoor(2))
-    R.eval("close")
-    assert(R.state == ClosedDoor(1))
-    R.eval("open")
-    assert(R.state == OpenDoor(0))
-    R.eval("close")
-    assert(R.state == BrokenDoor)
+      R.eval("open")
+      assert(R.state == OpenDoor(4))
+      R.eval("close")
+      assert(R.state == ClosedDoor(3))
+      R.eval("open")
+      assert(R.state == OpenDoor(2))
+      R.eval("close")
+      assert(R.state == ClosedDoor(1))
+      R.eval("open")
+      assert(R.state == OpenDoor(0))
+      R.eval("close")
+      assert(R.state == BrokenDoor)
 
-    R.state = ClosedDoor(5)
+      R.state = ClosedDoor(5)
+    }
+
+    "new Robot {}" - {
+
+      val R = new Robot[Door](_root_.com.thoughtworks.RobotTests.OpenDoor(0)) {}
+
+      R.eval("close")
+      assert(R.state == BrokenDoor)
+
+      R.state = OpenDoor(0)
+    }
 
   }
 

@@ -165,9 +165,9 @@ object Robot {
 
     private type Index = Int
 
-    private val positionMapCache = new mutable.WeakHashMap[macros.Universe#CompilationUnit, Array[PatchPoint]]
+    private val positionMapCache = new mutable.WeakHashMap[macros.Universe#CompilationUnit, Array[ConstructorPatchPoint]]
 
-    private final case class PatchPoint(constructor: Trees#Tree, position: reflect.api.Position)
+    private final case class ConstructorPatchPoint(constructor: Trees#Tree, position: reflect.api.Position)
 
     final def currentPersistencyPosition(c: blackbox.Context): c.Tree = {
       import c.universe._
@@ -175,54 +175,47 @@ object Robot {
       val positionMap = positionMapCache.synchronized {
         val unit = c.enclosingUnit
         positionMapCache.getOrElseUpdate(unit, {
-          val array = {
-            val arrayBuilder = Array.newBuilder[PatchPoint]
+          val constructorPatchPositions = {
+            val constrctorPatchPositionBuilder = Array.newBuilder[ConstructorPatchPoint]
 
             val traverser = new Traverser {
               override def traverse(tree: Tree): Unit = {
                 tree match {
-                  case md@ModuleDef(_, _, Template(List(q"$_($stateTree)"), _, List(constructor))) =>
-                    arrayBuilder += PatchPoint(constructor, stateTree.pos)
+                  case Template(List(q"$robot($stateTree)"), _, constructor :: _) =>
+                    constrctorPatchPositionBuilder += ConstructorPatchPoint(constructor, stateTree.pos)
                   case _ =>
-                    super.traverse(tree)
                 }
-
+                super.traverse(tree)
               }
             }
             traverser(unit.body)
-            arrayBuilder.result()
+            constrctorPatchPositionBuilder.result()
           }
-          Arrays.sort(array, Ordering.by[PatchPoint, Int](_.position.start))
-          array
+          Arrays.sort(constructorPatchPositions, Ordering.by[ConstructorPatchPoint, Int](_.position.start))
+          constructorPatchPositions
         })
       }
 
-      val (index, objectPosition) = c.enclosingMethod match {
-        case EmptyTree =>
-          val index = positionMap.indexWhere(_.constructor.symbol == c.internal.enclosingOwner)
-          index -> positionMap(index).position
-        case currentRobotConstructor =>
-          val index = positionMap.indexWhere(_.constructor == currentRobotConstructor)
-          if (index == -1) {
-            c.error(c.enclosingPosition, "A Robot instance must be an object, not a class.")
-            return q"???"
-          }
-          index -> positionMap(index).position
-      }
+      val index = positionMap.indexWhere(_.constructor.symbol == c.internal.enclosingOwner)
 
-      if (objectPosition.start == objectPosition.end) {
-        c.error(c.enclosingPosition, "Robot.scala requires ranged position. Please add setting `scalacOptions += \"-Yrangepos\"` to your build.sbt")
-      }
+      if (index != -1) {
+        val objectPosition = positionMap(index).position
+        if (!objectPosition.isRange) {
+          c.error(c.enclosingPosition, "Robot.scala requires ranged position. Please add setting `scalacOptions += \"-Yrangepos\"` to your build.sbt")
+        }
 
-      val md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(objectPosition.source.file.file))
-      val pp = PersistencyPosition(
-        PersistencyFile(objectPosition.source.path, positionMap.size, md5sum),
-        index,
-        objectPosition.start,
-        objectPosition.end
-      )
-      import Q._
-      q"$pp"
+        val md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(objectPosition.source.file.file))
+        val pp = PersistencyPosition(
+          PersistencyFile(objectPosition.source.path, positionMap.size, md5sum),
+          index,
+          objectPosition.start,
+          objectPosition.end
+        )
+        import Q._
+        q"$pp"
+      } else {
+        q"???"
+      }
     }
 
   }
