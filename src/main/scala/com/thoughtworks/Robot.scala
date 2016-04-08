@@ -1,35 +1,35 @@
 package com.thoughtworks
 
 import java.io._
-import java.nio.channels.FileChannel
-import java.nio.file.{Paths, StandardOpenOption}
-import java.security.MessageDigest
-import java.util.{Arrays, Date}
 
+import scala.language.experimental.macros
 import org.apache.commons.codec.digest.DigestUtils
 import org.apache.commons.io.{FileUtils, IOUtils}
 
 import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 import scala.reflect.api.{Symbols, Trees}
 import scala.reflect.runtime.universe._
 import scala.reflect.runtime.currentMirror
-import scala.reflect.api.Position
-import scala.reflect.internal.util.SourceFile
-import scala.reflect.macros
-import scala.reflect.macros.blackbox
-import scala.util.{Failure, Success}
+import scala.reflect.macros.{Universe, blackbox}
 
 /**
   * @author 杨博 (Yang Bo) &lt;pop.atry@gmail.com&gt;
   */
-abstract class Robot[AutoImports](initialState: AutoImports)(implicit persistencyPosition: Robot.PersistencyPosition)
-  extends Robot.StateMachine[AutoImports](initialState) {
+abstract class Robot[State] private[Robot](private[Robot] var currentState: State, writeState: State => Unit) {
 
-  override final def state_=(newState: AutoImports): Unit = synchronized {
-    if (currentState != newState) {
+  def this(initialState: State)(implicit persistencyPosition: Robot.PersistencyPosition) = {
+    this(initialState, { newState: State =>
       import Q._
       Robot.SourceFilePatcher.edit(persistencyPosition, showCode(q"$newState"))
+    })
+  }
+
+  final def state: State = currentState
+
+  final def state_=(newState: State): Unit = synchronized {
+    if (currentState != newState) {
+      import Q._
+      writeState(newState)
       currentState = newState
     }
   }
@@ -42,11 +42,11 @@ abstract class Robot[AutoImports](initialState: AutoImports)(implicit persistenc
     val autoImportsType = currentMirror.classSymbol(autoImports.getClass).toType
     val tree =
       q"""
-        val $$robotAutoImports = ${reify(autoImports).tree}.asInstanceOf[$autoImportsType]
-        import $$robotAutoImports._
+        val $$robotState = ${reify(autoImports).tree}.asInstanceOf[$autoImportsType]
+        import $$robotState._
         ${toolBox.parse(code)}
       """
-    state = toolBox.eval(tree).asInstanceOf[AutoImports]
+    state = toolBox.eval(tree).asInstanceOf[State]
   }
 
   final def main(arguments: Array[String]): Unit = {
@@ -62,28 +62,13 @@ abstract class Robot[AutoImports](initialState: AutoImports)(implicit persistenc
 
 object Robot {
 
-  sealed abstract class StateMachine[AutoImports] private[Robot](private[Robot] var currentState: AutoImports) {
-
-    final def state: AutoImports = currentState
-
-    def state_=(newState: AutoImports): Unit
-
-  }
-
-  final class Remote private[Robot](initialState: Any, sourceFile: File, packageSymbol: Symbols#Symbol, name: String) extends StateMachine(initialState) {
-    override def state_=(newState: Any): Unit = {
-      persistState(newState, sourceFile, packageSymbol, name)
-    }
-  }
-
-  def madeRobot(state: Any, sourceFile: File, packageName: String, name: String): Remote = {
+  /**
+    * Returns a newly created [[Robot]] at `sourceFile` with `packageName`.`objectName`.
+    */
+  def at[State](state: State, sourceFile: File, packageName: String, objectName: String): Robot[State] = {
     val packageSymbol = currentMirror.staticPackage(packageName)
-    persistState(state, sourceFile, packageSymbol, name: String)
-    new Remote(state, sourceFile, packageSymbol, name)
-  }
-
-  private def persistState(state: Any, sourceFile: File, packageName: String, name: String): Unit = {
-    persistState(state, sourceFile, currentMirror.staticPackage(packageName), name: String)
+    persistState(state, sourceFile, packageSymbol, objectName: String)
+    new Robot[State](state, persistState(_, sourceFile, packageSymbol, objectName)) {}
   }
 
   private def persistState(state: Any, sourceFile: File, packageSymbol: Symbols#Symbol, name: String): Unit = {
@@ -97,8 +82,7 @@ object Robot {
     FileUtils.write(sourceFile, showCode(content), io.Codec.UTF8.charSet)
   }
 
-  private[thoughtworks] final class EditingSourceFile(file: PersistencyFile) {
-    var md5sum: Array[Byte] = file.md5sum
+  private[thoughtworks] final class EditingSourceFile(name: String, var md5sum: Array[Byte]) {
     val sizeChanges = mutable.Map.empty[PersistencyPosition, Int]
   }
 
@@ -108,8 +92,8 @@ object Robot {
 
     final def edit(currentPosition: PersistencyPosition, newContent: String): Unit = {
       val editingSourceFile = editingSourceFiles.synchronized {
-        editingSourceFiles.getOrElseUpdate(currentPosition.file.name.intern(), {
-          new EditingSourceFile(currentPosition.file)
+        editingSourceFiles.getOrElseUpdate(currentPosition.fileName.intern(), {
+          new EditingSourceFile(currentPosition.fileName, currentPosition.md5sum)
         })
       }
       editingSourceFile.synchronized {
@@ -124,8 +108,8 @@ object Robot {
         val currentStart = currentPosition.initialStart + beforeOffset
         val currentEnd = currentPosition.initialEnd + beforeOffset + currentOffset
 
-        if (Arrays.equals(DigestUtils.md5(FileUtils.readFileToByteArray(new File(currentPosition.file.name))), editingSourceFile.md5sum)) {
-          val reader = new InputStreamReader(new FileInputStream(currentPosition.file.name), io.Codec.UTF8.charSet)
+        if (java.util.Arrays.equals(DigestUtils.md5(FileUtils.readFileToByteArray(new File(currentPosition.fileName))), editingSourceFile.md5sum)) {
+          val reader = new InputStreamReader(new FileInputStream(currentPosition.fileName), io.Codec.UTF8.charSet)
           val (before, after) = try {
             val before = Array.ofDim[Char](currentStart)
             IOUtils.readFully(reader, before)
@@ -136,7 +120,7 @@ object Robot {
             reader.close()
           }
 
-          val writer = new OutputStreamWriter(new FileOutputStream(currentPosition.file.name), io.Codec.UTF8.charSet)
+          val writer = new OutputStreamWriter(new FileOutputStream(currentPosition.fileName), io.Codec.UTF8.charSet)
           try {
             IOUtils.write(before, writer)
             IOUtils.write(newContent, writer)
@@ -145,9 +129,9 @@ object Robot {
             writer.close()
           }
           editingSourceFile.sizeChanges(currentPosition) += newContent.length - (currentEnd - currentStart)
-          editingSourceFile.md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(new File(currentPosition.file.name)))
+          editingSourceFile.md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(new File(currentPosition.fileName)))
         } else {
-          throw new IllegalStateException(s"Can't patch ${currentPosition.file.name} because some other programs changes on file after the robot loaded.")
+          throw new IllegalStateException(s"Can't patch ${currentPosition.fileName} because some other programs changes on file after the robot loaded.")
         }
       }
     }
@@ -156,27 +140,37 @@ object Robot {
 
   private[thoughtworks] object SourceFilePatcher extends SourceFilePatcher
 
-  final case class PersistencyFile(name: String, md5sum: Array[Byte])
-
-  final case class PersistencyPosition(file: PersistencyFile, initialStart: Int, initialEnd: Int)
+  final case class PersistencyPosition(fileName: String, md5sum: Array[Byte], initialStart: Int, initialEnd: Int)
 
   object PersistencyPosition {
 
-    import scala.language.experimental.macros
-
-    implicit final def currentPersistencyPosition: PersistencyPosition = macro Macros.currentPersistencyPosition
+    implicit def here: PersistencyPosition = macro Macros.here
 
   }
 
+  def apply[State](state: State): Robot[State] = macro Macros.apply
+
   private[Robot] object Macros {
 
-    private type Index = Int
+    def apply(c: blackbox.Context)(state: c.Tree): c.Tree = {
+      import c.universe._
+      val md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(state.pos.source.file.file))
+      val pp = new PersistencyPosition(
+        state.pos.source.path,
+        md5sum,
+        state.pos.start,
+        state.pos.end
+      )
+      val q"""$_[$t]($_)""" = c.macroApplication
+      import Q._
+      q"""new _root_.com.thoughtworks.Robot[$t]($state)($pp) {}"""
+    }
 
-    private val positionMapCache = new mutable.WeakHashMap[macros.Universe#CompilationUnit, Array[ConstructorPatchPoint]]
+    private val positionMapCache = new mutable.WeakHashMap[Universe#CompilationUnit, Array[ConstructorPatchPoint]]
 
     private final case class ConstructorPatchPoint(constructor: Trees#Tree, position: reflect.api.Position)
 
-    final def currentPersistencyPosition(c: blackbox.Context): c.Tree = {
+    def here(c: blackbox.Context): c.Tree = {
       import c.universe._
 
       val positionMap = positionMapCache.synchronized {
@@ -198,7 +192,6 @@ object Robot {
             traverser(unit.body)
             constrctorPatchPositionBuilder.result()
           }
-          Arrays.sort(constructorPatchPositions, Ordering.by[ConstructorPatchPoint, Int](_.position.start))
           constructorPatchPositions
         })
       }
@@ -212,8 +205,9 @@ object Robot {
         }
 
         val md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(objectPosition.source.file.file))
-        val pp = PersistencyPosition(
-          PersistencyFile(objectPosition.source.path, md5sum),
+        val pp = new PersistencyPosition(
+          objectPosition.source.path,
+          md5sum,
           objectPosition.start,
           objectPosition.end
         )
