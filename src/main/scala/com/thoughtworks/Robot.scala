@@ -99,26 +99,33 @@ object Robot {
 
   private[thoughtworks] final class EditingSourceFile(file: PersistencyFile) {
     var md5sum: Array[Byte] = file.md5sum
-    val sizeChanges: Array[Int] = Array.ofDim[Int](file.numberOfRobots)
+    val sizeChanges = mutable.Map.empty[PersistencyPosition, Int]
   }
 
   private[thoughtworks] class SourceFilePatcher {
 
     private[thoughtworks] val editingSourceFiles = new mutable.WeakHashMap[String, EditingSourceFile]
 
-    final def edit(position: PersistencyPosition, newContent: String): Unit = {
+    final def edit(currentPosition: PersistencyPosition, newContent: String): Unit = {
       val editingSourceFile = editingSourceFiles.synchronized {
-        editingSourceFiles.getOrElseUpdate(position.file.name.intern(), {
-          new EditingSourceFile(position.file)
+        editingSourceFiles.getOrElseUpdate(currentPosition.file.name.intern(), {
+          new EditingSourceFile(currentPosition.file)
         })
       }
       editingSourceFile.synchronized {
 
-        val currentStart = position.initialStart + editingSourceFile.sizeChanges.view(0, position.index).sum
-        val currentEnd = position.initialEnd + editingSourceFile.sizeChanges(position.index)
+        val beforeOffset = (for {
+          (position, offset) <- editingSourceFile.sizeChanges.view
+          if position.initialStart < currentPosition.initialStart
+        } yield offset).sum
 
-        if (Arrays.equals(DigestUtils.md5(FileUtils.readFileToByteArray(new File(position.file.name))), editingSourceFile.md5sum)) {
-          val reader = new InputStreamReader(new FileInputStream(position.file.name), io.Codec.UTF8.charSet)
+        val currentOffset = editingSourceFile.sizeChanges.getOrElseUpdate(currentPosition, 0)
+
+        val currentStart = currentPosition.initialStart + beforeOffset
+        val currentEnd = currentPosition.initialEnd + beforeOffset + currentOffset
+
+        if (Arrays.equals(DigestUtils.md5(FileUtils.readFileToByteArray(new File(currentPosition.file.name))), editingSourceFile.md5sum)) {
+          val reader = new InputStreamReader(new FileInputStream(currentPosition.file.name), io.Codec.UTF8.charSet)
           val (before, after) = try {
             val before = Array.ofDim[Char](currentStart)
             IOUtils.readFully(reader, before)
@@ -129,7 +136,7 @@ object Robot {
             reader.close()
           }
 
-          val writer = new OutputStreamWriter(new FileOutputStream(position.file.name), io.Codec.UTF8.charSet)
+          val writer = new OutputStreamWriter(new FileOutputStream(currentPosition.file.name), io.Codec.UTF8.charSet)
           try {
             IOUtils.write(before, writer)
             IOUtils.write(newContent, writer)
@@ -137,10 +144,10 @@ object Robot {
           } finally {
             writer.close()
           }
-          editingSourceFile.sizeChanges(position.index) += newContent.length - (currentEnd - currentStart)
-          editingSourceFile.md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(new File(position.file.name)))
+          editingSourceFile.sizeChanges(currentPosition) += newContent.length - (currentEnd - currentStart)
+          editingSourceFile.md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(new File(currentPosition.file.name)))
         } else {
-          throw new IllegalStateException(s"Can't patch ${position.file.name} because some other programs changes on file after the robot loaded.")
+          throw new IllegalStateException(s"Can't patch ${currentPosition.file.name} because some other programs changes on file after the robot loaded.")
         }
       }
     }
@@ -151,7 +158,7 @@ object Robot {
 
   final case class PersistencyFile(name: String, numberOfRobots: Int, md5sum: Array[Byte])
 
-  final case class PersistencyPosition(file: PersistencyFile, index: Int, initialStart: Int, initialEnd: Int)
+  final case class PersistencyPosition(file: PersistencyFile, initialStart: Int, initialEnd: Int)
 
   object PersistencyPosition {
 
@@ -207,7 +214,6 @@ object Robot {
         val md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(objectPosition.source.file.file))
         val pp = PersistencyPosition(
           PersistencyFile(objectPosition.source.path, positionMap.size, md5sum),
-          index,
           objectPosition.start,
           objectPosition.end
         )
