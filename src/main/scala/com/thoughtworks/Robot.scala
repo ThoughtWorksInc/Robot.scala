@@ -156,7 +156,7 @@ object Robot {
 
   private[thoughtworks] object SourceFilePatcher extends SourceFilePatcher
 
-  final case class PersistencyFile(name: String, numberOfRobots: Int, md5sum: Array[Byte])
+  final case class PersistencyFile(name: String, md5sum: Array[Byte])
 
   final case class PersistencyPosition(file: PersistencyFile, initialStart: Int, initialEnd: Int)
 
@@ -213,7 +213,7 @@ object Robot {
 
         val md5sum = DigestUtils.md5(FileUtils.readFileToByteArray(objectPosition.source.file.file))
         val pp = PersistencyPosition(
-          PersistencyFile(objectPosition.source.path, positionMap.size, md5sum),
+          PersistencyFile(objectPosition.source.path, md5sum),
           objectPosition.start,
           objectPosition.end
         )
