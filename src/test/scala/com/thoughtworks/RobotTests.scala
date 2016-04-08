@@ -42,12 +42,22 @@ object RobotTests extends TestSuite {
 
     "new Robot {}" - {
 
-      val R = new Robot[Door](_root_.com.thoughtworks.RobotTests.OpenDoor(0)) {}
+      val r = new Robot[Door](_root_.com.thoughtworks.RobotTests.OpenDoor(0)) {}
 
-      R.eval("close")
-      assert(R.state == BrokenDoor)
+      r.eval("close")
+      assert(r.state == BrokenDoor)
 
-      R.state = OpenDoor(0)
+      r.state = OpenDoor(0)
+    }
+
+    "Robot(...)" - {
+
+      val r = Robot[Door](_root_.com.thoughtworks.RobotTests.OpenDoor(0))
+
+      r.eval("close")
+      assert(r.state == BrokenDoor)
+
+      r.state = OpenDoor(0)
     }
 
   }
