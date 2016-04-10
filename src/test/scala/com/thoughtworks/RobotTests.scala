@@ -24,17 +24,17 @@ object RobotTests extends TestSuite {
     "object R extends Robot" - {
       object R extends Robot[Door](_root_.com.thoughtworks.RobotTests.ClosedDoor(5))
 
-      R.eval("open")
+      R.main(Array("open"))
       assert(R.state == OpenDoor(4))
-      R.eval("close")
+      R.main(Array("close"))
       assert(R.state == ClosedDoor(3))
-      R.eval("open")
+      R.main(Array("open"))
       assert(R.state == OpenDoor(2))
-      R.eval("close")
+      R.main(Array("close"))
       assert(R.state == ClosedDoor(1))
-      R.eval("open")
+      R.main(Array("open"))
       assert(R.state == OpenDoor(0))
-      R.eval("close")
+      R.main(Array("close"))
       assert(R.state == BrokenDoor)
 
       R.state = ClosedDoor(5)
@@ -44,7 +44,7 @@ object RobotTests extends TestSuite {
 
       val r = new Robot[Door](_root_.com.thoughtworks.RobotTests.OpenDoor(0)) {}
 
-      r.eval("close")
+      r.main(Array("close"))
       assert(r.state == BrokenDoor)
 
       r.state = OpenDoor(0)
@@ -54,7 +54,7 @@ object RobotTests extends TestSuite {
 
       val r = Robot[Door](_root_.com.thoughtworks.RobotTests.OpenDoor(0))
 
-      r.eval("close")
+      r.main(Array("close"))
       assert(r.state == BrokenDoor)
 
       r.state = OpenDoor(0)

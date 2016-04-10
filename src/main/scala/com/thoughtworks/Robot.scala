@@ -34,7 +34,7 @@ abstract class Robot[State] private[Robot](private[Robot] var currentState: Stat
     }
   }
 
-  final def eval(code: String): Unit = {
+  final def eval(code: String): State = {
     import scala.tools.reflect.ToolBox
     val toolBox = currentMirror.mkToolBox()
 
@@ -46,7 +46,7 @@ abstract class Robot[State] private[Robot](private[Robot] var currentState: Stat
         import $$robotState._
         ${toolBox.parse(code)}
       """
-    state = toolBox.eval(tree).asInstanceOf[State]
+    toolBox.eval(tree).asInstanceOf[State]
   }
 
   final def main(arguments: Array[String]): Unit = {
