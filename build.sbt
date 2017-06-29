@@ -8,7 +8,7 @@ libraryDependencies += "commons-io" % "commons-io" % "2.4"
 
 libraryDependencies += "commons-codec" % "commons-codec" % "1.10"
 
-libraryDependencies += "com.thoughtworks.q" %% "q" % "1.0.0-SNAPSHOT"
+libraryDependencies += "com.thoughtworks.q" %% "q" % "1.0.3"
 
 libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
 
